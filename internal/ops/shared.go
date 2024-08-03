@@ -31,6 +31,7 @@ type Repository struct {
 	worktree string
 	gitdir   string
 	conf     Config
+	rootDir  string
 }
 
 func Repo(path string) *Repository {
@@ -40,6 +41,9 @@ func Repo(path string) *Repository {
 		conf:     makeCfg(),
 	}
 }
+
+// func (repo *Repository) repoFile(create bool, paths ...string) {
+// }
 
 func (repo *Repository) repoPath(paths ...string) string {
 	parts := append([]string{repo.gitdir}, paths...)

@@ -45,3 +45,14 @@ func (repo *Repository) Init() {
 		fmt.Fprintf(os.Stderr, "Error writing config file: %v\n", err)
 	}
 }
+
+func (repo *Repository) CatFile(objFormat string, object string) {
+	repo.rootDir, _ = FindRepoRoot("")
+	format := []byte(objFormat)
+	obj, err := repo.DecodeObject(repo.objectFind(object, format))
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Print(string(obj.Serialize()))
+}

@@ -24,5 +24,9 @@ func main() {
 	switch command := args[1]; command {
 	case "init":
 		repo.Init()
+	case "decode":
+		repo.DecodeObject(args[2])
+	case "cat-file":
+		repo.CatFile(args[2], args[3])
 	}
 }
