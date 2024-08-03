@@ -50,53 +50,70 @@ func (repo *Repository) DecodeObject(sha string) (Object, error) {
 	contents := dcomp[y+1:]
 
 	switch objType {
+	case "blob":
+		return &Blob{contents}, nil
 	case "commit":
-		fmt.Println("Commit")
-		return &Commit{contents}, nil
+		fmt.Println("commit")
 	case "tree":
 		fmt.Println("tree")
 	case "tag":
 		fmt.Println("tag")
-	case "blob":
-		return &Blob{contents}, nil
 	}
 
 	return nil, nil
 }
 
-func (repo *Repository) WriteObject(obj Object) (string, error) {
+func (repo *Repository) WriteObject(obj Object, write bool) (string, error) {
 	data := obj.Serialize()
 	res := []byte(fmt.Sprintf("%s %d\x00", obj.Format(), len(data)))
 	res = append(res, data...)
 
 	hash := sha1.Sum(res)
 	sha := hex.EncodeToString(hash[:])
-
-	path := repo.repoPath("objects", sha[:2], sha[2:])
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create directories: %w", err)
-	}
-
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		file, err := os.Create(path)
-		if err != nil {
-			return "", fmt.Errorf("failed to create file: %w", err)
+	if write {
+		path := repo.repoPath("objects", sha[:2], sha[2:])
+		dir := filepath.Dir(path)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create directories: %w", err)
 		}
-		defer file.Close()
 
-		zw := zlib.NewWriter(file)
-		_, err = zw.Write(res)
-		if err != nil {
-			return "", fmt.Errorf("failed to write compressed data: %w", err)
-		}
-		err = zw.Close()
-		if err != nil {
-			return "", fmt.Errorf("failed to close zlib writer: %w", err)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			file, err := os.Create(path)
+			if err != nil {
+				return "", fmt.Errorf("failed to create file: %w", err)
+			}
+			defer file.Close()
+
+			zw := zlib.NewWriter(file)
+			_, err = zw.Write(res)
+			if err != nil {
+				return "", fmt.Errorf("failed to write compressed data: %w", err)
+			}
+			err = zw.Close()
+			if err != nil {
+				return "", fmt.Errorf("failed to close zlib writer: %w", err)
+			}
 		}
 	}
 
 	return sha, nil
+}
+
+func (repo *Repository) makeObjectHash(file io.Reader, objFormat string) (string, error) {
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return "", fmt.Errorf("Couldn't read file: %v", err)
+	}
+
+	var obj Object
+	switch objFormat {
+	case "blob":
+		obj = &Blob{contents}
+	default:
+		panic(objFormat + " is not yet implemented")
+	}
+
+	return repo.WriteObject(obj, false)
 }
 
 func (repo *Repository) objectFind(name string, _ []byte) string {

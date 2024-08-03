@@ -47,12 +47,39 @@ func (repo *Repository) Init() {
 }
 
 func (repo *Repository) CatFile(objFormat string, object string) {
-	repo.rootDir, _ = FindRepoRoot("")
+	var err error
+	repo.rootDir, err = findRepoRoot("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+	}
 	format := []byte(objFormat)
 	obj, err := repo.DecodeObject(repo.objectFind(object, format))
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "Couldn't decode object: %v\n", err)
 	}
 
 	fmt.Print(string(obj.Serialize()))
+}
+
+func (repo *Repository) HashObject(write bool, objFormat string, path string) {
+	var err error
+	if write {
+		repo.rootDir, err = findRepoRoot("")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, err.Error())
+		}
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Couldn't open file: %v\n", err)
+	}
+	defer file.Close()
+
+	sha, err := repo.makeObjectHash(file, objFormat)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Couldn't hash object: %v\n", err)
+	}
+
+	fmt.Println(sha)
 }

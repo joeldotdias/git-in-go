@@ -7,6 +7,7 @@ import (
 	"github.com/joeldotdias/gat/internal/ops"
 )
 
+// TODO: doc all the commands
 const HELP_TEXT = `usage: gat <command> [<args>...]
 `
 
@@ -14,7 +15,7 @@ func main() {
 	args := os.Args
 
 	if len(args) < 2 {
-		fmt.Fprintf(os.Stderr, HELP_TEXT) //"usage: gat <command> [<args>...]\n")
+		fmt.Fprintf(os.Stderr, HELP_TEXT)
 		os.Exit(1)
 	}
 
@@ -24,9 +25,10 @@ func main() {
 	switch command := args[1]; command {
 	case "init":
 		repo.Init()
-	case "decode":
-		repo.DecodeObject(args[2])
 	case "cat-file":
 		repo.CatFile(args[2], args[3])
+	case "hash-object":
+		// TODO: write some parsing logic. Or use a parsing lib
+		repo.HashObject(false, "blob", args[2])
 	}
 }

@@ -42,15 +42,19 @@ func Repo(path string) *Repository {
 	}
 }
 
-// func (repo *Repository) repoFile(create bool, paths ...string) {
-// }
-
 func (repo *Repository) repoPath(paths ...string) string {
-	parts := append([]string{repo.gitdir}, paths...)
+	var rootDir string
+	if repo.rootDir != "" {
+		rootDir = filepath.Join(repo.rootDir, ".git")
+	} else {
+		rootDir = repo.gitdir
+	}
+
+	parts := append([]string{rootDir}, paths...)
 	return filepath.Join(parts...)
 }
 
-func FindRepoRoot(path string) (string, error) {
+func findRepoRoot(path string) (string, error) {
 	if path == "" {
 		path = "."
 	}
@@ -69,5 +73,5 @@ func FindRepoRoot(path string) (string, error) {
 		return "", errors.New("Not in a repository. Run gat init to make one.")
 	}
 
-	return FindRepoRoot(parent)
+	return findRepoRoot(parent)
 }
