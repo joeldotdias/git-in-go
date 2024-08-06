@@ -9,69 +9,70 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
+
+	"github.com/joeldotdias/gat/internal/helpers"
 )
 
-func (repo *Repository) DecodeObject(sha string) (Object, error) {
-	objPath := repo.repoPath("objects", sha[:2], sha[2:])
-	file, err := os.Open(objPath)
+func (repo *Repository) makeObject(sha string) (Object, error) {
+	path := repo.makePath("objects", sha[:2], sha[2:])
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	zr, err := zlib.NewReader(file)
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+
+	data, err := io.ReadAll(zr)
 	if err != nil {
 		return nil, err
 	}
 
-	z, err := zlib.NewReader(file)
+	nullByteIndex := bytes.IndexByte(data, 0)
+	if nullByteIndex == -1 {
+		return nil, fmt.Errorf("malformed object format")
+	}
+
+	header := string(data[:nullByteIndex])
+	contents := data[nullByteIndex+1:]
+
+	var objType string
+	var size int
+	_, err = fmt.Sscanf(header, "%s %d", &objType, &size)
 	if err != nil {
 		return nil, err
 	}
-	defer z.Close()
 
-	dcomp, err := io.ReadAll(z)
-	if err != nil {
-		return nil, fmt.Errorf("Couldn't decompress file: %v", err)
-	}
-
-	x := bytes.IndexByte(dcomp, ' ')
-	if x == -1 {
-		return nil, fmt.Errorf("Malformed object '%s': didn't find space", sha)
-	}
-	objType := string(dcomp[:x])
-
-	y := bytes.Index(dcomp[x:], []byte("\x00"))
-	if y == -1 {
-		return nil, fmt.Errorf("Malformed object '%s': didn't find null byte", sha)
-	}
-	y = x + y
-
-	size, err := strconv.Atoi(string(dcomp[x+1 : y]))
-	if size != len(dcomp)-y-1 {
-		return nil, fmt.Errorf("Malformed object '%s': invalid size", sha)
-	}
-
-	contents := dcomp[y+1:]
-
+	var obj Object
 	switch objType {
-	case "blob":
-		return &Blob{contents}, nil
 	case "commit":
-		fmt.Println("commit")
+		obj = &Commit{klvm: make(map[string][]string)}
 	case "tree":
-		fmt.Println("tree")
-	case "tag":
-		fmt.Println("tag")
+		obj = &Tree{leaves: []*TreeLeaf{}}
+	case "blob":
+		obj = &Blob{}
+	default:
+		return nil, fmt.Errorf("Unknown object type: %s", objType)
 	}
 
-	return nil, nil
+	obj.Deserialize(contents)
+	return obj, nil
 }
 
-func (repo *Repository) WriteObject(obj Object, write bool) (string, error) {
+func (repo *Repository) writeObject(obj Object, write bool) (string, error) {
 	data := obj.Serialize()
-	res := []byte(fmt.Sprintf("%s %d\x00", obj.Format(), len(data)))
+	res := []byte(fmt.Sprintf("%s %d\x00", obj.GetType(), len(data)))
 	res = append(res, data...)
-
 	hash := sha1.Sum(res)
 	sha := hex.EncodeToString(hash[:])
+
 	if write {
-		path := repo.repoPath("objects", sha[:2], sha[2:])
+		path := repo.makePath("objects", sha[:2], sha[2:])
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return "", fmt.Errorf("failed to create directories: %w", err)
@@ -108,14 +109,42 @@ func (repo *Repository) makeObjectHash(file io.Reader, objFormat string) (string
 	var obj Object
 	switch objFormat {
 	case "blob":
-		obj = &Blob{contents}
+		obj = &Blob{data: contents}
+	case "tree":
+		obj = &Tree{leaves: treeParseEntirety(contents)}
+	case "commit":
+		commit := &Commit{klvm: make(map[string][]string)}
+		commit.Deserialize(contents)
+		obj = commit
 	default:
-		panic(objFormat + " is not yet implemented")
+		return "", fmt.Errorf("%s is not a valid object type", objFormat)
 	}
 
-	return repo.WriteObject(obj, false)
+	return repo.writeObject(obj, false)
 }
 
-func (repo *Repository) objectFind(name string, _ []byte) string {
-	return name
+func (repo *Repository) findObject(name string) (string, error) {
+	if len(name) == 40 && helpers.IsHex(name) {
+		return name, nil
+	}
+
+	path := repo.makePath("refs", name)
+	if _, err := os.Stat(path); err != nil {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("failed to read ref file: %w", err)
+		}
+		return strings.TrimSpace(string(content)), nil
+	}
+
+	prefix := name[:2]
+	path = repo.makePath("objects", prefix)
+	if matches, err := filepath.Glob(filepath.Join(path, name[2:]+"*")); err == nil && len(matches) > 0 {
+		if len(matches) > 1 {
+			return "", fmt.Errorf("ambiguous object name: %s", name)
+		}
+		return filepath.Base(prefix + matches[0]), nil
+	}
+
+	return "", fmt.Errorf("Didn't find object: %s", name)
 }

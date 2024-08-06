@@ -8,7 +8,7 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-// Initializes a repository in the current workind dir
+// Initializes a repository in the current working dir
 // TODO: add path param
 func (repo *Repository) Init() {
 	for _, dir := range []string{".git", ".git/objects", ".git/refs", ".git/branches"} {
@@ -52,13 +52,28 @@ func (repo *Repository) CatFile(objFormat string, object string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, err.Error())
 	}
-	format := []byte(objFormat)
-	obj, err := repo.DecodeObject(repo.objectFind(object, format))
+
+	sha, err := repo.findObject(object)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Couldn't decode object: %v\n", err)
+		fmt.Println(err.Error())
 	}
 
-	fmt.Print(string(obj.Serialize()))
+	obj, err := repo.makeObject(sha)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+
+	switch objFormat {
+	case "blob":
+		if blob, ok := obj.(*Blob); ok {
+			fmt.Print(string(blob.data))
+		} else {
+			fmt.Println("Not a blob")
+		}
+	case "commit", "tree":
+		fmt.Print(string(obj.Serialize()))
+	}
+
 }
 
 func (repo *Repository) HashObject(write bool, objFormat string, path string) {
@@ -82,4 +97,77 @@ func (repo *Repository) HashObject(write bool, objFormat string, path string) {
 	}
 
 	fmt.Println(sha)
+}
+
+func (repo *Repository) TopLsTree(tree string, recursive bool) error {
+	var err error
+	repo.rootDir, err = findRepoRoot("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, err.Error())
+	}
+
+	return repo.lsTree(tree, recursive, "")
+}
+
+func (repo *Repository) lsTree(ref string, recursive bool, prefix string) error {
+	sha, _ := repo.findObject(ref)
+	obj, err := repo.makeObject(sha)
+	if err != nil {
+		return err
+	}
+
+	var tree *Tree
+	switch o := obj.(type) {
+	case *Commit:
+		treeSha, err := o.getField("tree")
+		if err != nil {
+			return err
+		}
+		treeObj, err := repo.makeObject(treeSha)
+		if err != nil {
+			return err
+		}
+		var ok bool
+		tree, ok = treeObj.(*Tree)
+		if !ok {
+			return fmt.Errorf("Couldn't get tree object from this commit")
+		}
+	case *Tree:
+		tree = o
+	default:
+		return fmt.Errorf("Object %s is neither a tree nor a commit. It's type is %s", sha, obj.GetType())
+	}
+
+	for _, leaf := range tree.leaves {
+		var typeStr string
+		modeStr := string(leaf.mode)
+
+		switch modeStr {
+		case "40000":
+			typeStr = "tree"
+		case "100644", "100664", "100755":
+			typeStr = "blob"
+		case "120000":
+			typeStr = "blob" // but it's a symlink
+		case "160000":
+			typeStr = "commit"
+		default:
+			return fmt.Errorf("unknown mode %s", modeStr)
+		}
+
+		fmt.Printf("%06s %s %s\t%s\n",
+			modeStr,
+			typeStr,
+			leaf.sha,
+			filepath.Join(prefix, leaf.path))
+
+		if recursive && typeStr == "tree" {
+			err := repo.lsTree(leaf.sha, recursive, filepath.Join(prefix, leaf.path))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

@@ -1,6 +1,9 @@
 package helpers
 
-import "os"
+import (
+	"encoding/hex"
+	"os"
+)
 
 func IsDir(path string) bool {
 	info, err := os.Stat(path)
@@ -9,4 +12,9 @@ func IsDir(path string) bool {
 	}
 
 	return info.IsDir()
+}
+
+func IsHex(str string) bool {
+	_, err := hex.DecodeString(str)
+	return err == nil
 }

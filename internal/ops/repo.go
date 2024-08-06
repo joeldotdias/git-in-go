@@ -42,7 +42,7 @@ func Repo(path string) *Repository {
 	}
 }
 
-func (repo *Repository) repoPath(paths ...string) string {
+func (repo *Repository) makePath(paths ...string) string {
 	var rootDir string
 	if repo.rootDir != "" {
 		rootDir = filepath.Join(repo.rootDir, ".git")
