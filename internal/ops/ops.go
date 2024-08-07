@@ -155,11 +155,13 @@ func (repo *Repository) lsTree(ref string, recursive bool, prefix string) error 
 			return fmt.Errorf("unknown mode %s", modeStr)
 		}
 
-		fmt.Printf("%06s %s %s\t%s\n",
-			modeStr,
-			typeStr,
-			leaf.sha,
-			filepath.Join(prefix, leaf.path))
+		if !recursive || (recursive && typeStr == "blob") {
+			fmt.Printf("%06s %s %s\t%s\n",
+				modeStr,
+				typeStr,
+				leaf.sha,
+				filepath.Join(prefix, leaf.path))
+		}
 
 		if recursive && typeStr == "tree" {
 			err := repo.lsTree(leaf.sha, recursive, filepath.Join(prefix, leaf.path))
